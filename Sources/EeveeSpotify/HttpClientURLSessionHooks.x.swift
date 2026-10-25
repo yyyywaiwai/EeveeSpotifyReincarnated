@@ -1,6 +1,29 @@
 import Foundation
 import Orion
 
+private func prepareCustomizeRequest(_ request: URLRequest) -> URLRequest {
+    let prepared = CustomizeRequestPolicy.prepare(request, needsBody: UserDefaults.patchType.isPatching
+        && SpotifyResponsePatcher.cachedCustomizeData == nil
+        && UserDefaults.cachedCustomizeData == nil)
+    if prepared != request { writeDebugLog("[Customize] Requesting full configuration for cold cache") }
+    return prepared
+}
+
+class CustomizeURLSessionHook: ClassHook<URLSession> {
+    typealias Group = PremiumBootstrapGroup
+
+    func dataTaskWithRequest(_ request: URLRequest) -> URLSessionDataTask {
+        orig.dataTaskWithRequest(prepareCustomizeRequest(request))
+    }
+
+    func dataTaskWithRequest(
+        _ request: URLRequest,
+        completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void
+    ) -> URLSessionDataTask {
+        orig.dataTaskWithRequest(prepareCustomizeRequest(request), completionHandler: completionHandler)
+    }
+}
+
 // Sibling delegate to SPTDataLoaderService. Some regions (e.g. gae2) ship
 // bootstrap / customize / PAM responses through this delegate instead — without
 // hooking both, server-rendered free-tier strings slip through.

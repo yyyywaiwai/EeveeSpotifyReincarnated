@@ -60,7 +60,6 @@ enum SpotifyResponsePatcher {
                 || url.isPushkaTokens
                 || url.path.contains("signup/public") || url.path.contains("apresolve")
                 || url.path.contains("pses/screenconfig")
-                || shouldHandleCustomize(url)
         }
         return false
     }

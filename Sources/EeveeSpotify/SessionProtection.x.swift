@@ -371,14 +371,6 @@ class URLSessionTaskResumeHook: ClassHook<NSObject> {
                     task.cancel()
                     return
                 }
-                // customize re-fetches (AuthFetcher, every few hours) can use a
-                // background URLSession that bypasses the DataLoaderService hook and
-                // re-enable ads; cancel them past the 30s startup window.
-                if elapsed > 30 && path.contains("v1/customize") {
-                    writeDebugLog("[NET] Cancelled customize re-fetch at \(elapsedInt)s")
-                    task.cancel()
-                    return
-                }
                 if elapsed > 30 && host.contains("apresolve") {
                     writeDebugLog("[NET] Cancelled apresolve at \(elapsedInt)s")
                     task.cancel()

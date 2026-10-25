@@ -93,6 +93,12 @@ jobs:
             -o "$RUNNER_TEMP/custom-tabs-activation-tests"
           "$RUNNER_TEMP/custom-tabs-activation-tests"
           python3 Tests/ResolveConfigurationSnapshot/test.py
+          swiftc \
+            Sources/EeveeSpotify/Shared/Models/Extensions/URL+Extension.swift \
+            Sources/EeveeSpotify/Premium/Helpers/CustomizeRequestPolicy.swift \
+            Tests/CustomizeRequestPolicy/main.swift \
+            -o "$RUNNER_TEMP/customize-request-policy-tests"
+          "$RUNNER_TEMP/customize-request-policy-tests"
 
       - name: Build ${{ matrix.label }} .deb
         env:

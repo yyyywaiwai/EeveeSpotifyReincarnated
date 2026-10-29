@@ -51,7 +51,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          brew install make dpkg ldid wget
+          brew install make dpkg ldid wget xz
           echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
           python3 -m pip install --upgrade --break-system-packages \
               git+https://github.com/asdfzxcvbn/pyzule-rw.git
@@ -119,10 +119,16 @@ jobs:
       - name: Inject deb + framework into IPA (cyan)
         if: ${{ inputs.ipa_url != '' }}
         run: |
+          chmod +x Tools/build-ipa-deb.sh Tools/build-orion-ipa.sh
+          Tools/build-ipa-deb.sh
+          ORION_SRC=$(Tools/build-orion-ipa.sh)
+          VERSION=$(awk '$1 == "Version:" { print $2; exit }' control)
+          IPA_DEB_PATH="packages/ipa/com.eevee.spotify_${VERSION}_iphoneos-arm64.deb"
+          [ -s "$IPA_DEB_PATH" ] && [ -s "$ORION_SRC/Orion" ]
           mkdir -p Outputs/IPAS
           DEB_EXTRACT="$RUNNER_TEMP/deb-extract"
           mkdir -p "$DEB_EXTRACT"
-          dpkg-deb -R "$DEB_PATH" "$DEB_EXTRACT"
+          dpkg-deb -R "$IPA_DEB_PATH" "$DEB_EXTRACT"
 
           DYLIB_SRC=$(find "$DEB_EXTRACT" -name 'EeveeSpotify.dylib' | head -1)
           BUNDLE_SRC=$(find "$DEB_EXTRACT" -type d -name 'EeveeSpotify.bundle' | head -1)
@@ -134,15 +140,19 @@ jobs:
           OUT="Outputs/IPAS/EeveeSpotify-${EEVEE_VERSION}-${SPOT_VERSION}.ipa"
 
           INJECT=("$DYLIB_SRC")
+          INJECT+=("$ORION_SRC")
           [ -n "$FRAMEWORK_SRC" ] && INJECT+=("$FRAMEWORK_SRC")
           [ -n "$BUNDLE_SRC" ]    && INJECT+=("$BUNDLE_SRC")
 
-          # -d enable documents, -u drop UISupportedDevices, -m floor MinOS,
-          # -c max compress. Watch + native appex strip happens in the next
-          # step via Tools/strip-ipa.sh.
+          # Preserve the vanilla minimum OS; strip native appex/Watch here and
+          # verify again in the next Tools/strip-ipa.sh step.
           cyan -i ${{ github.workspace }}/spotify.ipa -o "$OUT" \
-               -f "${INJECT[@]}" -c 9 -m 15.0 -du
+               -f "${INJECT[@]}" -c 9 -e -w
+          PINNED="${OUT%.ipa}.orion-pinned.ipa"
+          python3 Tools/pin-ipa-orion.py "$OUT" "$ORION_SRC" "$PINNED"
+          mv "$PINNED" "$OUT"
           echo "OUT_IPA=$OUT" >> $GITHUB_ENV
+          echo "SPOT_VERSION=$SPOT_VERSION" >> $GITHUB_ENV
 
       - name: Strip incompatible bundles
         if: ${{ inputs.ipa_url != '' }}
@@ -188,6 +198,15 @@ jobs:
         run: |
           chmod +x Tools/alt-icons.sh
           Tools/alt-icons.sh "$OUT_IPA"
+
+      - name: Graft PlayPlay key probe for Spotify 9.1.88
+        if: ${{ inputs.ipa_url != '' }}
+        run: |
+          if [ "$SPOT_VERSION" = "9.1.88" ]; then
+            GRAFTED="${OUT_IPA%.ipa}.grafted.ipa"
+            bash Tools/graft-ipa-playplay.sh "$OUT_IPA" "$GRAFTED"
+            mv -f "$GRAFTED" "$OUT_IPA"
+          fi
 
       - name: Upload IPA artifact
         if: ${{ inputs.ipa_url != '' && (inputs.upload_method == 'artifacts' || inputs.upload_method == 'both') }}

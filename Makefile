@@ -17,12 +17,22 @@ $(shell printf 'enum GeneratedConfig {\n    static let repoSlug = "%s"\n    stat
 
 EeveeSpotify_FILES = $(shell find Sources/EeveeSpotify -name '*.swift') $(shell find Sources/EeveeSpotifyC -name '*.m' -o -name '*.c' -o -name '*.mm' -o -name '*.cpp')
 EeveeSpotify_SWIFTFLAGS = -ISources/EeveeSpotifyC/include -Osize
+ifeq ($(EEVEE_OFFLINE_PREFETCH_PROOF),1)
+EeveeSpotify_SWIFTFLAGS += -D EEVEE_OFFLINE_PREFETCH_PROOF
+endif
 EeveeSpotify_EXTRA_FRAMEWORKS = EeveeSwiftProtobuf
 EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
 
+# The IPA backend uses grafted Frida Gum probes without a jailbreak runtime.
+ifeq ($(ORION_DEFAULT_BACKEND),Internal)
+ifeq ($(FRIDA_GUM_DEVKIT_DIR),)
+$(error Build IPA with Tools/build-ipa-deb.sh to fetch the pinned Frida Gum devkit)
+endif
+EeveeSpotify_CFLAGS += -DPPKC_GUM=1 -I$(FRIDA_GUM_DEVKIT_DIR)
+EeveeSpotify_LDFLAGS += $(FRIDA_GUM_DEVKIT_DIR)/libfrida-gum.a -lm -lresolv -ldl
+else ifeq ($(THEOS_PACKAGE_SCHEME),roothide)
 # RootHide's compatibility implementation of libroot resolves jailbreak paths
 # through libroothide at runtime. Rootless builds continue to use libroot.
-ifeq ($(THEOS_PACKAGE_SCHEME),roothide)
 EeveeSpotify_SWIFTFLAGS += -D ROOTHIDE
 EeveeSpotify_LDFLAGS += -lroothide -Xlinker -rpath -Xlinker @loader_path/.jbroot/Library/Frameworks
 else

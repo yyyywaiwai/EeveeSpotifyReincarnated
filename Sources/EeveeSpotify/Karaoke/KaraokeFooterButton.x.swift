@@ -14,7 +14,10 @@ class KaraokeFooterUnitHook: ClassHook<UIViewController> {
     func viewDidLayoutSubviews() {
         orig.viewDidLayoutSubviews()
         guard #available(iOS 15.0, *), let root = target.viewIfLoaded else { return }
-        KaraokeFooterButton.meter.measure { KaraokeFooterButton.attach(to: root) }
+        if UserDefaults.lyricsSource.supportsCustomLyricsView {
+            KaraokeFooterButton.meter.measure { KaraokeFooterButton.attach(to: root) }
+        }
+        OfflineCurrentTrackButton.attach(to: root)
     }
 }
 
@@ -72,12 +75,12 @@ enum KaraokeFooterButton {
 }
 
 func activateKaraokeFooterButton() {
-    guard #available(iOS 15.0, *), UserDefaults.lyricsSource.supportsCustomLyricsView else { return }
+    guard #available(iOS 15.0, *) else { return }
     let start = CFAbsoluteTimeGetCurrent()
     guard NSClassFromString(KaraokeFooterUnitHook.targetName) != nil else {
         eeveeLog("[EeveeSpotify][Karaoke] Footer button skipped: footer unit missing")
         return
     }
     KaraokeFooterGroup().activate()
-    eeveeLog("[EeveeSpotify][Karaoke] Footer button active (%.2f ms)", (CFAbsoluteTimeGetCurrent() - start) * 1000)
+    eeveeLog("[EeveeSpotify] Now Playing footer buttons active (%.2f ms)", (CFAbsoluteTimeGetCurrent() - start) * 1000)
 }

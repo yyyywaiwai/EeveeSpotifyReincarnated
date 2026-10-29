@@ -4,17 +4,38 @@ import Orion
 // Written from concurrent URLSession delegate queues; unguarded access crashed on release.
 private let accessTokenLock = NSLock()
 private var storedAccessToken: String?
+private var storedCatalogCredential: SpotifyCatalogCredential?
 
 var spotifyAccessToken: String? {
     accessTokenLock.lock(); defer { accessTokenLock.unlock() }; return storedAccessToken
 }
 
+/// Both values came from one Spotify request; a Bearer rotation invalidates the old pair.
+var spotifyCatalogCredential: SpotifyCatalogCredential? {
+    accessTokenLock.lock(); defer { accessTokenLock.unlock() }
+    return storedCatalogCredential
+}
+
 func captureAccessToken(from request: URLRequest?) {
     guard let auth = request?.value(forHTTPHeaderField: "Authorization"), auth.hasPrefix("Bearer ") else { return }
     let token = String(auth.dropFirst(7))
+    guard !token.isEmpty, token.rangeOfCharacter(from: .newlines) == nil else { return }
+    let host = request?.url?.host?.lowercased() ?? ""
+    let fromSpotify = host == "spotify.com" || host.hasSuffix(".spotify.com")
+    let clientToken = request?.value(forHTTPHeaderField: "Client-Token")
     accessTokenLock.lock()
     let first = storedAccessToken == nil
-    if storedAccessToken != token { storedAccessToken = token }
+    if storedAccessToken != token {
+        storedAccessToken = token
+        storedCatalogCredential = nil
+    }
+    // A same-Bearer request without Client-Token keeps only a previously captured
+    // same-request pair; it never combines values from different Bearer rotations.
+    if fromSpotify, let clientToken, !clientToken.isEmpty,
+       clientToken.rangeOfCharacter(from: .newlines) == nil {
+        storedCatalogCredential = SpotifyCatalogCredential(accessToken: token,
+                                                            clientToken: clientToken)
+    }
     accessTokenLock.unlock()
     if first {
         eeveeLog("[EeveeSpotify][TokenCapture] First token, len %d from %@%@", token.count, request?.url?.host ?? "?", request?.url?.path ?? "")

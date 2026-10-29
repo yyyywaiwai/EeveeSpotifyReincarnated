@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import "OfflinePlayPlayKeyCapture.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -12,5 +13,6 @@ int EeveeInstallColorSwaps(BOOL amoled, NSInteger accentRGB);
 void EeveeColorSwapStats(long *grey, long *green, long *uiColor);
 BOOL EeveePinSetter(id object, SEL setter, id value);
 BOOL EeveeInterceptBackground(UIView *view, void (^sink)(UIColor *color));
+int ppc_decode_ogg_to_wav(const char *input, const char *output);
 
 NS_ASSUME_NONNULL_END

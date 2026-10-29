@@ -57,6 +57,10 @@ __attribute__((constructor)) static void init() {
         // Initialize Orion - do not remove this line.
         orion_init();
 
+        // Optional native PlayPlay key capture. Missing function-hook support
+        // leaves ordinary playback and the existing tweak unaffected.
+        (void)ppkc_install();
+
         NSLog(@"[EeveeSpotify] Tweak initialized successfully");
         // Custom initialization code goes here.
     }

@@ -68,7 +68,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          brew install make dpkg ldid wget
+          brew install make dpkg ldid wget xz
           echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
           python3 -m pip install --upgrade --break-system-packages \
               git+https://github.com/asdfzxcvbn/pyzule-rw.git
@@ -85,6 +85,8 @@ jobs:
 
       - name: Inject deb into IPA (cyan)
         run: |
+          chmod +x Tools/build-orion-ipa.sh
+          ORION_SRC=$(Tools/build-orion-ipa.sh)
           mkdir -p Outputs/IPAS
           DEB_EXTRACT="$RUNNER_TEMP/deb-extract"; mkdir -p "$DEB_EXTRACT"
           dpkg-deb -R ${{ github.workspace }}/eevee.deb "$DEB_EXTRACT"
@@ -92,18 +94,32 @@ jobs:
           DYLIB_SRC=$(find "$DEB_EXTRACT" -name 'EeveeSpotify.dylib' | head -1)
           BUNDLE_SRC=$(find "$DEB_EXTRACT" -type d -name 'EeveeSpotify.bundle' | head -1)
           FRAMEWORK_SRC=$(find "$DEB_EXTRACT" -type d -name 'EeveeSwiftProtobuf.framework' | head -1)
+          [ -s "$DYLIB_SRC" ] && [ -s "$ORION_SRC/Orion" ]
+          if nm -u "$DYLIB_SRC" | grep -Fq '$s5Orion8BackendsO9SubstrateV'; then
+            echo "IPA injection needs an Internal-backend EeveeSpotify deb, not a rootless Substrate deb" >&2
+            exit 1
+          fi
 
           SPOT_VERSION=$(unzip -p ${{ github.workspace }}/spotify.ipa 'Payload/Spotify.app/Info.plist' \
               | plutil -extract CFBundleShortVersionString raw - 2>/dev/null || echo "unknown")
+          if [ "$SPOT_VERSION" = "9.1.88" ] && ! nm "$DYLIB_SRC" | grep -F '_gum_interceptor_attach' >/dev/null; then
+            echo "Spotify 9.1.88 requires an Internal-backend deb with the PlayPlay Gum probe" >&2
+            exit 1
+          fi
           OUT="Outputs/IPAS/EeveeSpotify-${SPOT_VERSION}.ipa"
 
           INJECT=("$DYLIB_SRC")
+          INJECT+=("$ORION_SRC")
           [ -n "$FRAMEWORK_SRC" ] && INJECT+=("$FRAMEWORK_SRC")
           [ -n "$BUNDLE_SRC" ]    && INJECT+=("$BUNDLE_SRC")
 
           cyan -i ${{ github.workspace }}/spotify.ipa -o "$OUT" \
-               -f "${INJECT[@]}" -c 9 -m 15.0 -du
+               -f "${INJECT[@]}" -c 9 -e -w
+          PINNED="${OUT%.ipa}.orion-pinned.ipa"
+          python3 Tools/pin-ipa-orion.py "$OUT" "$ORION_SRC" "$PINNED"
+          mv "$PINNED" "$OUT"
           echo "OUT_IPA=$OUT" >> $GITHUB_ENV
+          echo "SPOT_VERSION=$SPOT_VERSION" >> $GITHUB_ENV
 
       - name: Fetch OpeninSafariSpotify extension (.appex)
         run: |
@@ -143,11 +159,22 @@ jobs:
           ipapatch --input "$PATCHED_OUT" --inplace --noconfirm \
                    --dylib packages/zxPluginsInject.dylib
           echo "PATCHED_IPA=$PATCHED_OUT" >> $GITHUB_ENV
+          echo "PATCHED_OUT=$PATCHED_OUT" >> $GITHUB_ENV
 
       - name: Stage alternate app icons
         run: |
           chmod +x Tools/alt-icons.sh
           Tools/alt-icons.sh "$OUT_IPA"
+
+      - name: Graft PlayPlay key probe for Spotify 9.1.88
+        run: |
+          if [ "$SPOT_VERSION" = "9.1.88" ]; then
+            for IPA_PATH in "$OUT_IPA" "$PATCHED_OUT"; do
+              GRAFTED="${IPA_PATH%.ipa}.grafted.ipa"
+              bash Tools/graft-ipa-playplay.sh "$IPA_PATH" "$GRAFTED"
+              mv -f "$GRAFTED" "$IPA_PATH"
+            done
+          fi
 
       - name: Upload IPA artifact
         if: ${{ inputs.upload_method == 'artifacts' || inputs.upload_method == 'both' }}

@@ -379,6 +379,9 @@ struct EeveeSpotify: Tweak {
             activateEeveeProbes()
             activateSponsorBlock()
             activateKaraokeHooks()
+            activateOfflineCurrentTrackHook()
+            activateOfflineLibraryHeaderEntry()
+            activateOfflineNativeSingleAlbumButton()
             return
         }
 
